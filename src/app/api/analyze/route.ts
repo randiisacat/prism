@@ -90,7 +90,7 @@ function buildPrompt(task: string, userType: UserType, mode: AnalysisMode, image
 }`
 }
 
-const MODEL = 'google/gemini-2.0-flash-exp:free'
+const MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free'
 const API_BASE = 'https://openrouter.ai/api/v1'
 
 export async function POST(req: NextRequest) {
@@ -156,7 +156,6 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       const err = await res.text()
       if (res.status === 429) return NextResponse.json({ error: '请求过于频繁，请稍后重试' }, { status: 429 })
-      if (res.status === 404) return NextResponse.json({ error: '模型不可用，请联系管理员' }, { status: 500 })
       return NextResponse.json({ error: `API 错误: ${res.status} ${err}` }, { status: 500 })
     }
 

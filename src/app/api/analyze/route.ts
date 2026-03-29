@@ -90,7 +90,12 @@ function buildPrompt(task: string, userType: UserType, mode: AnalysisMode, image
 }`
 }
 
-const MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free'
+const MODELS = [
+  'google/gemma-3-27b-it:free',
+  'nvidia/nemotron-nano-12b-v2-vl:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+]
+const MODEL = MODELS[Math.floor(Math.random() * MODELS.length)]
 const API_BASE = 'https://openrouter.ai/api/v1'
 
 export async function POST(req: NextRequest) {
@@ -129,45 +134,71 @@ export async function POST(req: NextRequest) {
 
     const prompt = buildPrompt(task, userType, mode, imageFiles.length)
 
-    const body = {
-      model: MODEL,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            ...imageParts.flat(),
-          ],
+    const makeRequest = async (model: string) => {
+      const body = {
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              ...imageParts.flat(),
+            ],
+          },
+        ],
+        temperature: 0.4,
+      }
+      return fetch(`${API_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://prism-simuser.vercel.app',
         },
-      ],
-      temperature: 0.4,
+        body: JSON.stringify(body),
+      })
     }
 
-    const res = await fetch(`${API_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://prism-simuser.vercel.app',
-      },
-      body: JSON.stringify(body),
-    })
+    let res = await makeRequest(MODEL)
+
+    // 429 时自动换下一个模型重试一次
+    if (res.status === 429) {
+      const fallback = MODELS.find(m => m !== MODEL) ?? MODELS[0]
+      res = await makeRequest(fallback)
+    }
 
     if (!res.ok) {
       const err = await res.text()
-      if (res.status === 429) return NextResponse.json({ error: '请求过于频繁，请稍后重试' }, { status: 429 })
+      if (res.status === 429) return NextResponse.json({ error: '所有模型请求频繁，请稍后重试' }, { status: 429 })
       return NextResponse.json({ error: `API 错误: ${res.status} ${err}` }, { status: 500 })
     }
 
     const data = await res.json()
     const text = data.choices?.[0]?.message?.content ?? ''
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      return NextResponse.json({ error: 'AI 返回格式异常，请重试' }, { status: 500 })
-    }
+    console.log('=== AI RAW RESPONSE ===')
+    console.log(text)
+    console.log('=== END ===')
 
-    const analysisResult: AnalysisResult = JSON.parse(jsonMatch[0])
+    // 提取 JSON，清理常见问题：markdown 代码块、控制字符、尾随逗号
+    let jsonStr = text
+    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (fenceMatch) jsonStr = fenceMatch[1]
+    else {
+      const objMatch = text.match(/\{[\s\S]*\}/)
+      if (!objMatch) return NextResponse.json({ error: 'AI 返回格式异常，请重试' }, { status: 500 })
+      jsonStr = objMatch[0]
+    }
+    // 清理控制字符和尾随逗号
+    jsonStr = jsonStr
+      .replace(/[\x00-\x1F\x7F]/g, ' ')
+      .replace(/,\s*([}\]])/g, '$1')
+
+    console.log('=== CLEANED JSON ===')
+    console.log(jsonStr.substring(0, 600))
+    console.log('=== END ===')
+
+    const analysisResult: AnalysisResult = JSON.parse(jsonStr)
 
     if (analysisResult.pageAnalyses && analysisResult.pageAnalyses.length < imageFiles.length) {
       while (analysisResult.pageAnalyses.length < imageFiles.length) {

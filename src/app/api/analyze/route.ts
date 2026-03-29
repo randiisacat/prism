@@ -90,13 +90,13 @@ function buildPrompt(task: string, userType: UserType, mode: AnalysisMode, image
 }`
 }
 
-const MODEL = 'gemini-2.0-flash-lite'
-const API_BASE = 'https://generativelanguage.googleapis.com/v1'
+const MODEL = 'google/gemini-2.0-flash-exp:free'
+const API_BASE = 'https://openrouter.ai/api/v1'
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
-    const apiKey = process.env.GEMINI_API_KEY
+    const apiKey = process.env.OPENROUTER_API_KEY
     const task = formData.get('task') as string
     const userType = formData.get('userType') as UserType
     const mode = formData.get('mode') as AnalysisMode
@@ -121,8 +121,8 @@ export async function POST(req: NextRequest) {
         const bytes = await file.arrayBuffer()
         const base64 = Buffer.from(bytes).toString('base64')
         return [
-          { text: `\n--- Step ${idx + 1}: ${stepNames[idx] || `页面${idx + 1}`} ---\n` },
-          { inlineData: { data: base64, mimeType: file.type } },
+          { type: 'text', text: `\n--- Step ${idx + 1}: ${stepNames[idx] || `页面${idx + 1}`} ---\n` },
+          { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64}` } },
         ]
       })
     )
@@ -130,32 +130,38 @@ export async function POST(req: NextRequest) {
     const prompt = buildPrompt(task, userType, mode, imageFiles.length)
 
     const body = {
-      contents: [
+      model: MODEL,
+      messages: [
         {
-          parts: [
-            { text: prompt },
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
             ...imageParts.flat(),
           ],
         },
       ],
-      generationConfig: {
-        temperature: 0.4,
-      },
+      temperature: 0.4,
     }
 
-    const res = await fetch(`${API_BASE}/models/${MODEL}:generateContent?key=${apiKey}`, {
+    const res = await fetch(`${API_BASE}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://prism-simuser.vercel.app',
+      },
       body: JSON.stringify(body),
     })
 
     if (!res.ok) {
       const err = await res.text()
-      return NextResponse.json({ error: `Gemini API 错误: ${res.status} ${err}` }, { status: 500 })
+      if (res.status === 429) return NextResponse.json({ error: '请求过于频繁，请稍后重试' }, { status: 429 })
+      if (res.status === 404) return NextResponse.json({ error: '模型不可用，请联系管理员' }, { status: 500 })
+      return NextResponse.json({ error: `API 错误: ${res.status} ${err}` }, { status: 500 })
     }
 
     const data = await res.json()
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+    const text = data.choices?.[0]?.message?.content ?? ''
 
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {

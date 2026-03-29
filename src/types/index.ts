@@ -9,7 +9,7 @@ export interface UploadedImage {
 export type UserType = 'new_user' | 'experienced_user' | 'high_intent_user'
 export type AnalysisMode = 'single' | 'flow'
 export type RiskLevel = 'high' | 'medium' | 'low'
-export type Priority = 'P0' | 'P1' | 'P2'
+export type IssueType = 'discoverability' | 'comprehension' | 'decision' | 'layout'
 
 export interface TaskConfig {
   task: string
@@ -17,6 +17,7 @@ export interface TaskConfig {
   mode: AnalysisMode
 }
 
+// ─── Visualization ────────────────────────────────────────────────────────────
 export interface AnnotationRegion {
   type: 'attention' | 'action' | 'confusion'
   x: number
@@ -33,42 +34,66 @@ export interface PageAnalysis {
   operationPath: string[]
 }
 
-export interface SuggestionOption {
-  cost: 'low' | 'medium' | 'high'
-  costLabel: string
+// ─── Structured Analysis ──────────────────────────────────────────────────────
+export interface AnalysisSummary {
+  level: RiskLevel
+  coreIssue: string
+  confidence: number
+  reasons: string[]
+}
+
+export interface FlowStep {
+  step: number
   action: string
+  status: 'ok' | 'friction' | 'blocked'
+  note: string
 }
 
-export interface BlockingPoint {
+export interface IssueReasoning {
+  observation: string
+  userExpectation: string
+  actualExperience: string
+  cognitiveGap: string
+  userThinking: string
+  evidence: string
+}
+
+export interface IssueImpact {
+  scope: RiskLevel
+  businessImpact: string
+}
+
+export interface Issue {
+  id: string
   title: string
-  description: string
-  reason: string
-  impact: string
+  type: IssueType
+  isCriticalPath: boolean
+  blocksUser: boolean
+  recoverable: boolean
+  reasoning: IssueReasoning
+  impact: IssueImpact
   severity: RiskLevel
-  priority: Priority
-  mentalModel: string        // 用户心理模型
-  businessImpact: string     // 业务影响
-  riskBasis: string          // 风险判断依据
-  newUserImpact: string      // 新用户影响
-  experiencedUserImpact: string // 老用户影响
-  suggestions: SuggestionOption[] // 多方案建议
 }
 
-export interface AnalysisResult {
-  summary: string
-  firstReaction: string
-  operationPath: string[]
-  blockingPoints: BlockingPoint[]
-  dropoffRisk: {
-    step: string
-    reason: string
-  }
-  suggestions: string[]
-  cognitionModel?: {
-    assumption: string
-    reality: string
-    result: string
-  }
-  riskLevel: RiskLevel
+export interface IssuePriority {
+  issueId: string
+  priority: 'P0' | 'P1' | 'P2'
+  reason: string
+}
+
+export interface Solution {
+  issueId: string
+  level: 'P0' | 'P1' | 'P2'
+  solution: string
+  type: 'structure' | 'cognition' | 'ui'
+  expectedEffect: string
+}
+
+export interface StructuredAnalysis {
+  summary: AnalysisSummary
+  flow: FlowStep[]
+  issues: Issue[]
+  priorities: IssuePriority[]
+  solutions: Solution[]
   pageAnalyses: PageAnalysis[]
 }

@@ -5,7 +5,7 @@ import { ImageUploader } from '@/components/ImageUploader'
 import { TaskConfigPanel } from '@/components/TaskConfigPanel'
 import { VisualizationPanel } from '@/components/VisualizationPanel'
 import { AnalysisReport } from '@/components/AnalysisReport'
-import { UploadedImage, TaskConfig, AnalysisResult } from '@/types'
+import { UploadedImage, TaskConfig, StructuredAnalysis } from '@/types'
 import { Loader2, Sparkles, BarChart3, ArrowRight, Route, AlertTriangle, TrendingDown, Lightbulb } from 'lucide-react'
 
 // ─── Header ──────────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ export default function Home() {
     mode: 'single',
   })
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [result, setResult] = useState<StructuredAnalysis | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const canAnalyze = images.length > 0 && taskConfig.task.trim()

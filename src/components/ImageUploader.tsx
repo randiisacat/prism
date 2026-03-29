@@ -27,7 +27,7 @@ function SortableImageItem({ image, onRemove, onRename }: SortableImageItemProps
   return (
     <div ref={setNodeRef} style={style} className="relative flex flex-col gap-2 w-[120px] flex-shrink-0">
       <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 aspect-[9/16] shadow-sm hover:shadow-md transition-shadow">
-        <div className="absolute top-2 left-2 z-10 bg-indigo-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-sm">
+        <div className="absolute top-2 left-2 z-10 w-5 h-5 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
           {image.order}
         </div>
         <div

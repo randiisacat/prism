@@ -13,7 +13,7 @@ function buildPrompt(task: string, userType: UserType, mode: AnalysisMode, image
     ? `这是一个包含 ${imageCount} 个步骤的连续操作流程，图片按顺序排列，用户需要依次完成每个步骤。`
     : '这是单个页面的可用性分析。'
 
-  return `你是一位专业的用户体验研究员，同时也是一位${userDesc}。
+  return `你是一位专业的用户体验研究员和产品决策顾问，同时也是一位${userDesc}。
 
 任务目标：${task}
 分析模式：${modeDesc}
@@ -25,12 +25,14 @@ function buildPrompt(task: string, userType: UserType, mode: AnalysisMode, image
 - 关注用户的认知过程，而非界面的技术实现
 - 对于多图流程，必须判断用户在哪个步骤最容易卡住或流失
 - 可视化标注坐标使用百分比（0-100），表示元素在图片中的相对位置
+- blockingPoints 必须按优先级排序（P0 最严重），最多输出 3 个
+- 每个 blockingPoint 必须包含心理模型分析、业务影响判断、风险依据、用户类型差异和三档建议方案
 
 请以严格的 JSON 格式输出，不要包含任何多余文字：
 
 {
-  "summary": "一句话结论，描述当前流程是否顺畅以及主要问题",
-  "firstReaction": "用户第一眼的真实反应，是否清楚下一步该做什么",
+  "summary": "【必须】15字以内的一句话结论，直接指出最核心问题，不加修饰语，例如：用户在支付页产生认知困惑",
+  "firstReaction": "【必须】20字以内，说明原因，例如：选项描述不清，按钮位置不直观",
   "operationPath": [
     "步骤1：用户先看哪里/做什么",
     "步骤2：接下来的动作",
@@ -41,18 +43,34 @@ function buildPrompt(task: string, userType: UserType, mode: AnalysisMode, image
       "title": "问题标题",
       "description": "具体描述这个卡点",
       "reason": "用户为什么会在这里困惑",
-      "impact": "对任务完成的影响",
-      "severity": "high|medium|low"
+      "impact": "用户会因此产生什么具体行为后果，例如：用户不敢点击发送（流程中断）、用户反复返回重试（体验崩溃）",
+      "severity": "high|medium|low",
+      "priority": "P0|P1|P2",
+      "mentalModel": "用户对这个界面元素的心理预期是什么，为什么会产生误解",
+      "businessImpact": "这个问题对转化率/完成率/用户留存的具体影响",
+      "riskBasis": "判断为该风险等级的依据，例如：认知摩擦大、流程断裂、信息缺失等",
+      "newUserImpact": "对新用户的具体影响",
+      "experiencedUserImpact": "对老用户的具体影响",
+      "suggestions": [
+        { "cost": "low", "costLabel": "低成本", "action": "不改界面结构，仅改文案/颜色/顺序即可解决" },
+        { "cost": "medium", "costLabel": "中成本", "action": "需调整局部 UI 布局或交互逻辑" },
+        { "cost": "high", "costLabel": "高成本", "action": "需重新设计该模块或流程" }
+      ]
     }
   ],
   "dropoffRisk": {
-    "step": "最可能放弃的步骤名称（如：Step 2 注册页）",
-    "reason": "用户在这里放弃的原因"
+    "step": "最可能放弃的步骤名称（如：Step 3 View Once）",
+    "reason": "两句话，用"|"分隔，每句描述一个用户行为后果，例如：用户不确定是否安全发送|可能直接放弃操作"
   },
   "suggestions": [
     "针对问题1的具体优化建议",
     "针对问题2的具体优化建议"
   ],
+  "cognitionModel": {
+    "assumption": "用户默认认为什么（一句话，描述用户的心理预期）",
+    "reality": "实际界面打破了这个预期（一句话，说明哪里不符合预期）",
+    "result": "导致用户产生什么行为（一句话，描述用户的反应或结果）"
+  },
   "riskLevel": "high|medium|low",
   "pageAnalyses": [
     {
@@ -176,10 +194,6 @@ export async function POST(req: NextRequest) {
     const data = await res.json()
     const text = data.choices?.[0]?.message?.content ?? ''
 
-    console.log('=== AI RAW RESPONSE ===')
-    console.log(text)
-    console.log('=== END ===')
-
     // 提取 JSON，清理常见问题：markdown 代码块、控制字符、尾随逗号
     let jsonStr = text
     const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
@@ -193,10 +207,6 @@ export async function POST(req: NextRequest) {
     jsonStr = jsonStr
       .replace(/[\x00-\x1F\x7F]/g, ' ')
       .replace(/,\s*([}\]])/g, '$1')
-
-    console.log('=== CLEANED JSON ===')
-    console.log(jsonStr.substring(0, 600))
-    console.log('=== END ===')
 
     const analysisResult: AnalysisResult = JSON.parse(jsonStr)
 

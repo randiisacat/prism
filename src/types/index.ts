@@ -9,6 +9,7 @@ export interface UploadedImage {
 export type UserType = 'new_user' | 'experienced_user' | 'high_intent_user'
 export type AnalysisMode = 'single' | 'flow'
 export type RiskLevel = 'high' | 'medium' | 'low'
+export type Priority = 'P0' | 'P1' | 'P2'
 
 export interface TaskConfig {
   task: string
@@ -32,12 +33,25 @@ export interface PageAnalysis {
   operationPath: string[]
 }
 
+export interface SuggestionOption {
+  cost: 'low' | 'medium' | 'high'
+  costLabel: string
+  action: string
+}
+
 export interface BlockingPoint {
   title: string
   description: string
   reason: string
   impact: string
   severity: RiskLevel
+  priority: Priority
+  mentalModel: string        // 用户心理模型
+  businessImpact: string     // 业务影响
+  riskBasis: string          // 风险判断依据
+  newUserImpact: string      // 新用户影响
+  experiencedUserImpact: string // 老用户影响
+  suggestions: SuggestionOption[] // 多方案建议
 }
 
 export interface AnalysisResult {
@@ -50,6 +64,11 @@ export interface AnalysisResult {
     reason: string
   }
   suggestions: string[]
+  cognitionModel?: {
+    assumption: string
+    reality: string
+    result: string
+  }
   riskLevel: RiskLevel
   pageAnalyses: PageAnalysis[]
 }

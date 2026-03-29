@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { PageAnalysis, AnnotationRegion } from '@/types'
-import { Badge } from '@/components/ui/badge'
 
 const ANNOTATION_COLORS = {
   attention: { fill: 'rgba(59, 130, 246, 0.2)', stroke: 'rgba(59, 130, 246, 0.8)', label: '注意区域', badge: 'bg-blue-100 text-blue-700' },
@@ -184,11 +183,14 @@ export function VisualizationPanel({ images, pageAnalyses }: VisualizationPanelP
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">结果可视化</h2>
+        <div>
+          <h2 className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">行为热区标注</h2>
+          <p className="text-[12px] text-slate-400 mt-0.5">AI 模拟用户视线与操作区域</p>
+        </div>
         <div className="flex gap-3">
           {legend.map((l) => (
-            <div key={l.type} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className={`w-3 h-3 rounded-sm ${l.color} opacity-70`} />
+            <div key={l.type} className="flex items-center gap-1.5 text-[11px] text-slate-500">
+              <span className={`w-2.5 h-2.5 rounded-sm ${l.color} opacity-80`} />
               {l.label}
             </div>
           ))}

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { AnalysisResult, UserType, AnalysisMode } from '@/types'
 
 const USER_TYPE_LABELS: Record<UserType, string> = {
@@ -91,6 +90,9 @@ function buildPrompt(task: string, userType: UserType, mode: AnalysisMode, image
 }`
 }
 
+const MODEL = 'gemini-2.0-flash-lite'
+const API_BASE = 'https://generativelanguage.googleapis.com/v1'
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
@@ -114,38 +116,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '请上传至少一张截图' }, { status: 400 })
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-002' })
-
-    // Convert images to base64
     const imageParts = await Promise.all(
-      imageFiles.map(async (file) => {
+      imageFiles.map(async (file, idx) => {
         const bytes = await file.arrayBuffer()
         const base64 = Buffer.from(bytes).toString('base64')
-        return {
-          inlineData: {
-            data: base64,
-            mimeType: file.type,
-          },
-        }
+        return [
+          { text: `\n--- Step ${idx + 1}: ${stepNames[idx] || `页面${idx + 1}`} ---\n` },
+          { inlineData: { data: base64, mimeType: file.type } },
+        ]
       })
     )
 
     const prompt = buildPrompt(task, userType, mode, imageFiles.length)
 
-    // Add step labels before images
-    const contents = [
-      prompt,
-      ...imageParts.flatMap((part, idx) => [
-        `\n--- Step ${idx + 1}: ${stepNames[idx] || `页面${idx + 1}`} ---\n`,
-        part,
-      ]),
-    ]
+    const body = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            ...imageParts.flat(),
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        responseMimeType: 'application/json',
+      },
+    }
 
-    const result = await model.generateContent(contents)
-    const text = result.response.text()
+    const res = await fetch(`${API_BASE}/models/${MODEL}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
 
-    // Extract JSON from response
+    if (!res.ok) {
+      const err = await res.text()
+      return NextResponse.json({ error: `Gemini API 错误: ${res.status} ${err}` }, { status: 500 })
+    }
+
+    const data = await res.json()
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       return NextResponse.json({ error: 'AI 返回格式异常，请重试' }, { status: 500 })
@@ -153,8 +165,7 @@ export async function POST(req: NextRequest) {
 
     const analysisResult: AnalysisResult = JSON.parse(jsonMatch[0])
 
-    // Ensure pageAnalyses matches uploaded images
-    if (analysisResult.pageAnalyses && analysisResult.pageAnalyses.length !== imageFiles.length) {
+    if (analysisResult.pageAnalyses && analysisResult.pageAnalyses.length < imageFiles.length) {
       while (analysisResult.pageAnalyses.length < imageFiles.length) {
         analysisResult.pageAnalyses.push({
           stepIndex: analysisResult.pageAnalyses.length,

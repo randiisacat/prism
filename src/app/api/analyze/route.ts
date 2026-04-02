@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { StructuredAnalysis, UserType, AnalysisMode } from '@/types'
 
+export const maxDuration = 60 // Vercel serverless 最大执行时间（秒）
+
 const USER_TYPE_LABELS: Record<UserType, string> = {
   new_user: '新用户（首次使用产品，不熟悉界面，需要明确的引导）',
   experienced_user: '老用户（熟悉产品，有固定使用习惯，对流程有预期）',
@@ -172,6 +174,8 @@ export async function POST(req: NextRequest) {
     const prompt = buildPrompt(task, userType, mode, imageFiles.length)
 
     const makeRequest = async (model: string) => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 45000) // 45s 超时
       const body = {
         model,
         messages: [
@@ -185,15 +189,23 @@ export async function POST(req: NextRequest) {
         ],
         temperature: 0.3,
       }
-      return fetch(`${API_BASE}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://prism-simuser.vercel.app',
-        },
-        body: JSON.stringify(body),
-      })
+      try {
+        const res = await fetch(`${API_BASE}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            'HTTP-Referer': 'https://prism-simuser.vercel.app',
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        })
+        clearTimeout(timer)
+        return res
+      } catch (e) {
+        clearTimeout(timer)
+        throw e
+      }
     }
 
     // 依次尝试所有模型，遇到 429/502/503 自动切换
@@ -208,10 +220,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (!res.ok) {
-      const err = await res.text()
       if (res.status === 429) return NextResponse.json({ error: '所有模型请求频繁，请稍后重试' }, { status: 429 })
       if (res.status === 502 || res.status === 503) return NextResponse.json({ error: '模型服务暂时不可用，请稍后重试' }, { status: 502 })
-      return NextResponse.json({ error: `API 错误: ${res.status} ${err}` }, { status: 500 })
+      const err = await res.text()
+      const errText = err.startsWith('<!') ? `HTTP ${res.status}` : err.slice(0, 200)
+      return NextResponse.json({ error: `API 错误: ${errText}` }, { status: 500 })
     }
 
     const data = await res.json()
@@ -272,7 +285,7 @@ export async function POST(req: NextRequest) {
     })) ?? []
     result.solutions = result.solutions?.map(sol => ({
       ...sol,
-      options: sol.options?.map(o => ({ ...o, action: stripEmoji(o.action) })) ?? [],
+      solution: stripEmoji(sol.solution),
     })) ?? []
 
     return NextResponse.json(result)

@@ -96,6 +96,10 @@ export default function Home() {
     setIsAnalyzing(true)
     setError(null)
     setResult(null)
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      controller.abort()
+    }, 55000)
     try {
       const formData = new FormData()
       formData.append('task', taskConfig.task)
@@ -103,13 +107,19 @@ export default function Home() {
       formData.append('mode', taskConfig.mode)
       formData.append('stepNames', JSON.stringify(images.map((img) => img.stepName)))
       images.forEach((img, i) => formData.append(`image_${i}`, img.file))
-      const res = await fetch('/api/analyze', { method: 'POST', body: formData })
+      const res = await fetch('/api/analyze', { method: 'POST', body: formData, signal: controller.signal })
+      clearTimeout(timer)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || '分析失败')
       setResult(data)
       setTimeout(() => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' }), 100)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '分析失败，请重试')
+      clearTimeout(timer)
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('分析超时，模型响应过慢，请稍后重试')
+      } else {
+        setError(err instanceof Error ? err.message : '分析失败，请重试')
+      }
     } finally {
       setIsAnalyzing(false)
     }
